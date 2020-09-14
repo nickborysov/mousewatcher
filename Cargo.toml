@@ -1,0 +1,13 @@
+[package]
+name = "mousewatcher"
+version = "0.1.0"
+authors = ["Nikolay Borysov <niks.borisov@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rdev = {repository = "github.com/Narsil/rdev"}
+rand = "0.7.3"
+device_query = "0.2.5"
+colored = "2"
