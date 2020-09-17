@@ -1,6 +1,6 @@
 use colored::*;
 use device_query::{DeviceQuery, DeviceState};
-use rdev::{display_size, listen, simulate, Event, EventType, Key};
+use rdev::{display_size, listen, simulate, Button, Event, EventType, Key};
 use std::process::exit;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -8,6 +8,9 @@ use std::{env, thread};
 
 const PARAM_DELAY: &str = "delay";
 const MASTER_KEY: &Key = &Key::AltGr;
+const CLICK_PERCENT: f32 = 0.01;
+const COUNT_OF_CLICKS: i32 = 3;
+const AREA_SIZE: i32 = 400;
 static mut NO_ACTION_MS: u128 = 10_000;
 static mut LAST_MOVE_MS: u128 = 0;
 static mut STATE_WORKING: bool = false;
@@ -136,14 +139,18 @@ fn callback(event: Event) {
 
 fn make_random_move() {
     let (size_x, size_y) = display_size().unwrap();
-    let dest_x = (rand::random::<i32>() % (size_x as i32)).abs();
-    let dest_y = (rand::random::<i32>() % (size_y as i32)).abs();
+    let center_x = (size_x / 2) as i32;
+    let center_y = (size_y / 2) as i32;
+
+    let dest_x = (rand::random::<i32>() % (AREA_SIZE * 2)).abs() + center_x - AREA_SIZE;
+    let dest_y = (rand::random::<i32>() % (AREA_SIZE * 2)).abs() + center_y - AREA_SIZE;
     let device_state = DeviceState::new();
     let (orig_mouse_x, orig_mouse_y) = device_state.get_mouse().coords;
     let mut mouse_x = orig_mouse_x;
     let mut mouse_y = orig_mouse_y;
 
     println!("Mouse moving to {:?}, {:?}", dest_x, dest_y);
+    let mut count_of_clicks = 0;
     while mouse_x != dest_x || mouse_y != dest_y {
         if (mouse_x - dest_x) != 0 {
             mouse_x = if (mouse_x - dest_x).is_positive() {
@@ -168,6 +175,18 @@ fn make_random_move() {
             Ok(()) => (),
             Err(e) => {
                 println!("We could not send {:?}, err {:?}", event_type, e);
+            }
+        }
+
+        if rand::random::<f32>() < CLICK_PERCENT && count_of_clicks < COUNT_OF_CLICKS {
+            count_of_clicks = count_of_clicks + 1;
+            println!("Click at {:?}, {:?}", mouse_x, mouse_y);
+            let event_type = &EventType::ButtonPress(Button::Left);
+            match simulate(event_type) {
+                Ok(()) => (),
+                Err(e) => {
+                    println!("We could not send {:?}, err {:?}", event_type, e);
+                }
             }
         }
         sleep(Duration::from_millis(3));
