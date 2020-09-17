@@ -1,10 +1,11 @@
+use clap::{App, Arg};
 use colored::*;
 use device_query::{DeviceQuery, DeviceState};
 use rdev::{display_size, listen, simulate, Button, Event, EventType, Key};
 use std::process::exit;
+use std::thread;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::{env, thread};
 
 const PARAM_DELAY: &str = "delay";
 const MASTER_KEY: &Key = &Key::AltGr;
@@ -15,36 +16,46 @@ static mut NO_ACTION_MS: u128 = 10_000;
 static mut LAST_MOVE_MS: u128 = 0;
 static mut STATE_WORKING: bool = false;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() > 1 && args[1].starts_with(PARAM_DELAY) && args[1].len() > 6 {
-        let delay_param = &args[1];
-        let delay_str = &delay_param[6..];
-        match delay_str.parse::<u128>() {
-            Ok(delay) => unsafe { NO_ACTION_MS = delay * 1000 },
-            Err(e) => {
-                println!("Invalid param {:?} {:?}", PARAM_DELAY, e);
-                exit(1)
-            }
-        }
+#[derive(Debug)]
+struct CustomError(String);
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        unsafe {
-            LAST_MOVE_MS = now.as_millis();
-        }
-    }
+fn main() -> Result<(), CustomError> {
+    init_params()?;
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    unsafe { LAST_MOVE_MS = now.as_millis() }
 
     print_welcome_message();
 
     start_watcher();
 
-    let res = listen(callback);
-    match res {
-        Ok(_) => {}
-        Err(e) => {
-            println!("error {:?}", e);
+    listen(callback).map_err(|e| CustomError(format!("{:?}", e)))?;
+
+    Ok(())
+}
+
+fn init_params() -> Result<(), CustomError> {
+    let matches = App::new("Mouse Watcher")
+        .version("0.1.0")
+        .arg(
+            Arg::with_name(PARAM_DELAY)
+                .short('d')
+                .long(PARAM_DELAY)
+                .takes_value(true)
+                .about("Delay before next auto move"),
+        )
+        .get_matches();
+
+    match matches.value_of(PARAM_DELAY) {
+        Some(delay_str) => {
+            let delay = delay_str
+                .parse::<u128>()
+                .map_err(|e| CustomError(e.to_string()))?;
+            unsafe { NO_ACTION_MS = delay * 1000 };
         }
+        None => {}
     }
+    Ok(())
 }
 
 fn print_welcome_message() {
@@ -101,7 +112,10 @@ fn start_watcher() {
     thread::spawn(|| loop {
         if unsafe { STATE_WORKING } {
             if should_move() {
-                make_random_move();
+                match make_random_move() {
+                    Ok(()) => {}
+                    Err(e) => println!("Error {:?}", e),
+                }
             }
             sleep(Duration::from_secs(1));
         }
@@ -110,11 +124,9 @@ fn start_watcher() {
 
 fn should_move() -> bool {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    unsafe {
-        let diff = now.as_millis() - LAST_MOVE_MS;
-        println!("seconds since last move: {:?}", diff / 1000);
-        diff > NO_ACTION_MS && LAST_MOVE_MS != 0
-    }
+    let diff = now.as_millis() - unsafe { LAST_MOVE_MS };
+    println!("seconds since last move: {:?}", diff / 1000);
+    unsafe { diff > NO_ACTION_MS && LAST_MOVE_MS != 0 }
 }
 
 fn callback(event: Event) {
@@ -132,13 +144,11 @@ fn callback(event: Event) {
     }
 
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-    unsafe {
-        LAST_MOVE_MS = now.as_millis();
-    }
+    unsafe { LAST_MOVE_MS = now.as_millis() }
 }
 
-fn make_random_move() {
-    let (size_x, size_y) = display_size().unwrap();
+fn make_random_move() -> Result<(), CustomError> {
+    let (size_x, size_y) = display_size().map_err(|e| CustomError(format!("{:?}", e)))?;
     let center_x = (size_x / 2) as i32;
     let center_y = (size_y / 2) as i32;
 
@@ -171,24 +181,15 @@ fn make_random_move() {
             x: mouse_x as f64,
             y: mouse_y as f64,
         };
-        match simulate(event_type) {
-            Ok(()) => (),
-            Err(e) => {
-                println!("We could not send {:?}, err {:?}", event_type, e);
-            }
-        }
+        simulate(event_type).map_err(|e| CustomError(e.to_string()))?;
 
         if rand::random::<f32>() < CLICK_PERCENT && count_of_clicks < COUNT_OF_CLICKS {
             count_of_clicks = count_of_clicks + 1;
             println!("Click at {:?}, {:?}", mouse_x, mouse_y);
             let event_type = &EventType::ButtonPress(Button::Left);
-            match simulate(event_type) {
-                Ok(()) => (),
-                Err(e) => {
-                    println!("We could not send {:?}, err {:?}", event_type, e);
-                }
-            }
+            simulate(event_type).map_err(|e| CustomError(e.to_string()))?;
         }
         sleep(Duration::from_millis(3));
     }
+    Ok(())
 }
