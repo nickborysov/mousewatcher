@@ -149,43 +149,45 @@ fn callback(event: Event) {
 
 fn make_random_move() -> Result<(), CustomError> {
     let (size_x, size_y) = display_size().map_err(|e| CustomError(format!("{:?}", e)))?;
+
     let center_x = (size_x / 2) as i32;
     let center_y = (size_y / 2) as i32;
 
     let dest_x = (rand::random::<i32>() % (AREA_SIZE * 2)).abs() + center_x - AREA_SIZE;
     let dest_y = (rand::random::<i32>() % (AREA_SIZE * 2)).abs() + center_y - AREA_SIZE;
-    let device_state = DeviceState::new();
-    let (orig_mouse_x, orig_mouse_y) = device_state.get_mouse().coords;
-    let mut mouse_x = orig_mouse_x;
-    let mut mouse_y = orig_mouse_y;
+
+    let (orig_mouse_x, orig_mouse_y) = DeviceState::new().device_state.get_mouse().coords;
+
+    let mut x = orig_mouse_x;
+    let mut y = orig_mouse_y;
 
     println!("Mouse moving to {:?}, {:?}", dest_x, dest_y);
     let mut count_of_clicks = 0;
-    while mouse_x != dest_x || mouse_y != dest_y {
-        if (mouse_x - dest_x) != 0 {
-            mouse_x = if (mouse_x - dest_x).is_positive() {
-                mouse_x - 1
+    while x != dest_x || y != dest_y {
+        if (x - dest_x) != 0 {
+            x = if (x - dest_x).is_positive() {
+                x - 1
             } else {
-                mouse_x + 1
+                x + 1
             };
         }
-        if (mouse_y - dest_y) != 0 {
-            mouse_y = if (mouse_y - dest_y).is_positive() {
-                mouse_y - 1
+        if (y - dest_y) != 0 {
+            y = if (y - dest_y).is_positive() {
+                y - 1
             } else {
-                mouse_y + 1
+                y + 1
             };
         }
         // println!("Small move to {:?}, {:?}", mouse_x, mouse_y);
         let event_type = &EventType::MouseMove {
-            x: mouse_x as f64,
-            y: mouse_y as f64,
+            x: x as f64,
+            y: y as f64,
         };
         simulate(event_type).map_err(|e| CustomError(e.to_string()))?;
 
         if rand::random::<f32>() < CLICK_PERCENT && count_of_clicks < COUNT_OF_CLICKS {
             count_of_clicks = count_of_clicks + 1;
-            println!("Click at {:?}, {:?}", mouse_x, mouse_y);
+            println!("Click at {:?}, {:?}", x, y);
             let event_type = &EventType::ButtonPress(Button::Left);
             simulate(event_type).map_err(|e| CustomError(e.to_string()))?;
         }
